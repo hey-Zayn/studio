@@ -13,19 +13,26 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 
+interface ProgressState {
+  total: number;
+  completed: number;
+  currentUrl: string;
+  startTime: number | null;
+}
+
 export default function Home() {
   const [isPending, startTransition] = useTransition();
   const [url, setUrl] = useState('');
   const [deepScan, setDeepScan] = useState(false);
   const [results, setResults] = useState<ScrapeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState({ total: 0, completed: 0, currentUrl: '' });
+  const [progress, setProgress] = useState<ProgressState>({ total: 0, completed: 0, currentUrl: '', startTime: null });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setResults(null);
-    setProgress({ total: 0, completed: 0, currentUrl: '' });
+    setProgress({ total: 1, completed: 0, currentUrl: '', startTime: Date.now() });
     
     if (!url) {
       setError("Please enter a URL.");
@@ -40,21 +47,20 @@ export default function Home() {
       
       let completedCount = 0;
       
-      const startTime = Date.now();
-
       while (urlsToVisit.length > 0) {
         const currentUrl = urlsToVisit.shift()!;
         if (!currentUrl) continue;
         
         completedCount++;
-        setProgress({ 
+        setProgress(prev => ({ 
+            ...prev,
             total: visitedUrls.size, 
             completed: completedCount, 
             currentUrl: currentUrl 
-        });
+        }));
 
-        const request: ScrapeRequest = { url: currentUrl, deepScan };
-        const response = await scrapeUrl(request, url); // Pass base URL for origin check
+        const request: ScrapeRequest = { url: currentUrl, deepScan: deepScan && urlsToVisit.length === 0 };
+        const response = await scrapeUrl(request, url); 
 
         if (response.success && response.data) {
           allResults.emails.push(...(response.data.emails || []));
@@ -68,6 +74,7 @@ export default function Home() {
                 urlsToVisit.push(link);
               }
             });
+            setProgress(prev => ({ ...prev, total: visitedUrls.size }));
           }
         } else if (response.error) {
             // Display first error and stop
@@ -75,7 +82,6 @@ export default function Home() {
             break;
         }
 
-        // De-duplicate results
         allResults = {
             emails: [...new Set(allResults.emails)],
             phones: [...new Set(allResults.phones)],
@@ -85,14 +91,14 @@ export default function Home() {
         setResults(allResults);
       }
       
-      setProgress(prev => ({ ...prev, completed: visitedUrls.size, currentUrl: 'Done!' }));
+      setProgress(prev => ({ ...prev, completed: prev.total, currentUrl: 'Done!' }));
     });
   };
 
   const estimatedTimeRemaining = () => {
-    if (progress.completed === 0 || progress.total === 0) return null;
+    if (!progress.startTime || progress.completed === 0 || progress.total === 0) return null;
 
-    const elapsedTime = (Date.now() - (progress.startTime || 0)) / 1000; // seconds
+    const elapsedTime = (Date.now() - progress.startTime) / 1000; // seconds
     const timePerUrl = elapsedTime / progress.completed;
     const remainingUrls = progress.total - progress.completed;
     const estimatedSeconds = Math.round(remainingUrls * timePerUrl);
@@ -162,8 +168,8 @@ export default function Home() {
         {isPending && (
             <Card>
                 <CardContent className="p-6">
-                    <p className="text-sm text-muted-foreground mb-2">Scanning: {progress.currentUrl}</p>
-                    <Progress value={(progress.completed / progress.total) * 100} className="w-full" />
+                    <p className="text-sm text-muted-foreground mb-2 truncate">Scanning: {progress.currentUrl}</p>
+                    <Progress value={progress.total > 0 ? (progress.completed / progress.total) * 100 : 0} className="w-full" />
                     <div className="flex justify-between items-center mt-2 text-sm text-muted-foreground">
                         <span>{progress.completed} of {progress.total} pages scanned</span>
                         {estimatedTimeRemaining() && <span>~{estimatedTimeRemaining()} left</span>}
