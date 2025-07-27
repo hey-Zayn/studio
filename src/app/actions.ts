@@ -57,13 +57,23 @@ export async function scrapeUrl(request: ScrapeRequest, baseUrl: string): Promis
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    $('script, style, noscript, svg, header, footer, nav').remove();
+    // Don't remove elements, just get all text and metadata
+    const pageText = $('html').text();
     
-    const bodyText = $('body').text();
+    let metaDescription = '';
+    $('meta[name="description"]').each((i, el) => {
+        metaDescription += $(el).attr('content') + ' ';
+    });
+
+    let metaKeywords = '';
+     $('meta[name="keywords"]').each((i, el) => {
+        metaKeywords += $(el).attr('content') + ' ';
+    });
     
-    const cleanText = bodyText
+    const combinedText = pageText + ' ' + metaDescription + ' ' + metaKeywords;
+
+    const cleanText = combinedText
       .replace(/\s+/g, ' ')
-      .replace(/<[^>]*>/g, ' ')
       .trim();
 
 
