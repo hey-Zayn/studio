@@ -56,33 +56,21 @@ export async function scrapeUrl(request: ScrapeRequest, baseUrl: string): Promis
 
     const html = await response.text();
     const $ = cheerio.load(html);
-
-    // Don't remove elements, just get all text and metadata
-    const pageText = $('html').text();
     
-    let metaDescription = '';
-    $('meta[name="description"]').each((i, el) => {
-        metaDescription += $(el).attr('content') + ' ';
-    });
-
-    let metaKeywords = '';
-     $('meta[name="keywords"]').each((i, el) => {
-        metaKeywords += $(el).attr('content') + ' ';
-    });
-    
-    const combinedText = pageText + ' ' + metaDescription + ' ' + metaKeywords;
-
-    const cleanText = combinedText
+    const combinedText = html
       .replace(/\s+/g, ' ')
       .trim();
 
 
     const getUniqueMatches = (regex: RegExp) => 
-      Array.from(new Set(cleanText.match(regex) || []));
+      Array.from(new Set(combinedText.match(regex) || []));
 
     const emails = getUniqueMatches(emailRegex);
     const phones = getUniqueMatches(phoneRegex);
-    const potentialNames = getUniqueMatches(nameRegex);
+    
+    // For names, we should still use the visible text to avoid parsing JS/CSS.
+    const visibleText = $('body').text().replace(/\s+/g, ' ').trim();
+    const potentialNames = Array.from(new Set(visibleText.match(nameRegex) || []));
     
     const commonFalsePositives = ['Privacy Policy', 'Terms Of Service', 'Contact Us', 'About Us', 'All Rights Reserved', 'Cookie Policy', 'Terms And Conditions', 'Return Policy', 'Shipping Policy'];
     const filteredNames = potentialNames.filter(name => !commonFalsePositives.some(phrase => name.toLowerCase().includes(phrase.toLowerCase())));
