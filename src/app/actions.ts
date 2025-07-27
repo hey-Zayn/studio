@@ -57,20 +57,18 @@ export async function scrapeUrl(request: ScrapeRequest, baseUrl: string): Promis
     const html = await response.text();
     const $ = cheerio.load(html);
     
-    const combinedText = html
-      .replace(/\s+/g, ' ')
-      .trim();
+    // Use the decoded HTML to catch everything, including mailto links.
+    const combinedText = $('body').html() || '';
 
+    const getUniqueMatches = (regex: RegExp, text: string) => 
+      Array.from(new Set(text.match(regex) || []));
 
-    const getUniqueMatches = (regex: RegExp) => 
-      Array.from(new Set(combinedText.match(regex) || []));
-
-    const emails = getUniqueMatches(emailRegex);
-    const phones = getUniqueMatches(phoneRegex);
+    const emails = getUniqueMatches(emailRegex, combinedText);
+    const phones = getUniqueMatches(phoneRegex, combinedText);
     
     // For names, we should still use the visible text to avoid parsing JS/CSS.
     const visibleText = $('body').text().replace(/\s+/g, ' ').trim();
-    const potentialNames = Array.from(new Set(visibleText.match(nameRegex) || []));
+    const potentialNames = getUniqueMatches(nameRegex, visibleText);
     
     const commonFalsePositives = ['Privacy Policy', 'Terms Of Service', 'Contact Us', 'About Us', 'All Rights Reserved', 'Cookie Policy', 'Terms And Conditions', 'Return Policy', 'Shipping Policy'];
     const filteredNames = potentialNames.filter(name => !commonFalsePositives.some(phrase => name.toLowerCase().includes(phrase.toLowerCase())));
