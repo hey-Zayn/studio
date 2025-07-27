@@ -1,11 +1,19 @@
 'use server';
 
 import * as cheerio from 'cheerio';
+import { URL } from 'url';
+
+
+export interface ScrapeRequest {
+  url: string;
+  deepScan: boolean;
+}
 
 export interface ScrapeResult {
   emails: string[];
   phones: string[];
   names: string[];
+  links?: string[];
 }
 
 interface ScrapeResponse {
@@ -19,7 +27,9 @@ const phoneRegex = /(?:(?:\+?1\s*(?:[.-]\s*)?)?(?:\(\s*([2-9]1[02-9]|[2-9][02-8]
 const nameRegex = /\b([A-Z][a-z']{2,})\s+([A-Z][a-z']{2,})\b/g;
 
 
-export async function scrapeUrl(url: string): Promise<ScrapeResponse> {
+export async function scrapeUrl(request: ScrapeRequest, baseUrl: string): Promise<ScrapeResponse> {
+  const { url, deepScan } = request;
+
   if (!url) {
     return { success: false, error: 'URL is required.' };
   }
@@ -41,7 +51,7 @@ export async function scrapeUrl(url: string): Promise<ScrapeResponse> {
     });
     
     if (!response.ok) {
-      return { success: false, error: `Failed to fetch URL. Status: ${response.status} ${response.statusText}. Please check the URL and try again.` };
+      return { success: false, error: `Failed to fetch URL: ${fullUrl}. Status: ${response.status}` };
     }
 
     const html = await response.text();
@@ -58,7 +68,7 @@ export async function scrapeUrl(url: string): Promise<ScrapeResponse> {
 
 
     const getUniqueMatches = (regex: RegExp) => 
-      Array.from(cleanText.match(regex) || []).filter((item, index, self) => self.indexOf(item) === index);
+      Array.from(new Set(cleanText.match(regex) || []));
 
     const emails = getUniqueMatches(emailRegex);
     const phones = getUniqueMatches(phoneRegex);
@@ -67,13 +77,36 @@ export async function scrapeUrl(url: string): Promise<ScrapeResponse> {
     const commonFalsePositives = ['Privacy Policy', 'Terms Of Service', 'Contact Us', 'About Us', 'All Rights Reserved', 'Cookie Policy', 'Terms And Conditions', 'Return Policy', 'Shipping Policy'];
     const filteredNames = potentialNames.filter(name => !commonFalsePositives.some(phrase => name.toLowerCase().includes(phrase.toLowerCase())));
 
-    return {
-      success: true,
-      data: {
+    const result: ScrapeResult = {
         emails,
         phones,
         names: filteredNames
-      },
+    };
+
+    if (deepScan) {
+        const baseDomain = new URL(baseUrl).hostname;
+        const links = new Set<string>();
+        $('a').each((i, link) => {
+            const href = $(link).attr('href');
+            if (href) {
+                try {
+                    const absoluteUrl = new URL(href, fullUrl).href;
+                    const urlDomain = new URL(absoluteUrl).hostname;
+                    if (urlDomain === baseDomain) {
+                        links.add(absoluteUrl.split('#')[0].split('?')[0]); // Normalize URL
+                    }
+                } catch (e) {
+                    // Ignore invalid URLs
+                }
+            }
+        });
+        result.links = Array.from(links);
+    }
+
+
+    return {
+      success: true,
+      data: result,
     };
   } catch (error) {
     console.error('Scraping error:', error);
