@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
 import type { ScrapeResult } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast"
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Check, Copy, Mail, Phone, User } from 'lucide-react';
+import { Check, Copy, Mail, Phone, User, Download } from 'lucide-react';
 
 interface LeadResultsProps {
   data: ScrapeResult;
@@ -46,6 +47,29 @@ export function LeadResults({ data }: LeadResultsProps) {
         description: `${items.length} items copied to clipboard.`,
     });
   }
+
+  const handleDownloadExcel = () => {
+    const { emails, phones, names } = data;
+    const maxLength = Math.max(emails.length, phones.length, names.length);
+    const worksheetData = [];
+
+    for (let i = 0; i < maxLength; i++) {
+        worksheetData.push({
+            'Email': emails[i] || '',
+            'Phone': phones[i] || '',
+            'Name': names[i] || '',
+        });
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Leads');
+    XLSX.writeFile(workbook, 'leads.xlsx');
+    toast({
+        title: "Download Started",
+        description: "Your leads are being downloaded as leads.xlsx.",
+    });
+  };
 
   const renderTable = (items: string[], type: 'email' | 'phone' | 'name') => {
     if (items.length === 0) {
@@ -96,11 +120,17 @@ export function LeadResults({ data }: LeadResultsProps) {
 
   return (
     <Card className="mt-8 shadow-lg">
-      <CardHeader>
-        <CardTitle>Scraping Results</CardTitle>
-        <CardDescription>
-          Found {data.emails.length} emails, {data.phones.length} phone numbers, and {data.names.length} potential names.
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div>
+            <CardTitle>Scraping Results</CardTitle>
+            <CardDescription>
+            Found {data.emails.length} emails, {data.phones.length} phone numbers, and {data.names.length} potential names.
+            </CardDescription>
+        </div>
+        <Button variant="outline" onClick={handleDownloadExcel}>
+            <Download className="mr-2 h-4 w-4" />
+            Download as Excel
+        </Button>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="emails" className="w-full">
